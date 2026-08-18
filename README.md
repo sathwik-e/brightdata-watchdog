@@ -106,6 +106,6 @@ graph TD
 - [ ] Confirm no API keys, webhook secrets, or ngrok tokens are committed — check `.gitignore` covers any `.env*` files.
 - [ ] Confirm `data/db.json` in the repo doesn't contain anything you don't want public (it will be, once the repo is public).
 
-## AI Usage Disclosure (Rule 10)
+## AI Usage Disclosure
 
 In accordance with hackathon rules, we disclose that AI coding assistants (including Google's Antigravity IDE and Gemini models) were used during development to assist with Next.js boilerplate, UI component styling, and markdown documentation generation. Claude (Anthropic) was used as a planning and review assistant — for demo-script structure, verifying claims against Bright Data's actual documented behavior, and reviewing this README for accuracy. All core logic, system architecture, and Bright Data integrations were directed and validated by the team.
