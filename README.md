@@ -101,10 +101,6 @@ graph TD
     C -.->|Simulated Alert| F[Slack API]
 ```
 
-## Before You Submit
-
-- [ ] Confirm no API keys, webhook secrets, or ngrok tokens are committed — check `.gitignore` covers any `.env*` files.
-- [ ] Confirm `data/db.json` in the repo doesn't contain anything you don't want public (it will be, once the repo is public).
 
 ## AI Usage Disclosure
 
