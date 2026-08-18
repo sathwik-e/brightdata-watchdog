@@ -38,7 +38,17 @@ export default function DemoTarget() {
           WATCHDOG HONEYPOT TARGET
         </div>
         <button
-          onClick={() => setIsMutated((prev) => !prev)}
+          onClick={async () => {
+            const nextMutated = !isMutated;
+            setIsMutated(nextMutated);
+            
+            // Ping our backend so the Watchdog Dashboard knows it broke!
+            await fetch('/api/status', {
+              method: 'POST',
+              body: JSON.stringify({ status: nextMutated ? 'broken' : 'healthy' }),
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }}
           style={{
             backgroundColor: isMutated ? '#ff6b6b' : '#10B981',
             color: '#fff',

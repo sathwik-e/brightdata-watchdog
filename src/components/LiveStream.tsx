@@ -1,7 +1,15 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ScrapedItem } from '@/types/scraper';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface LogEvent {
+  time: string;
+  message: string;
+}
 
 // ---------------------------------------------------------------------------
 // Log color mapping
@@ -9,71 +17,57 @@ import { ScrapedItem } from '@/types/scraper';
 
 function getLogColor(line: string): string {
   if (line.includes('BRIGHT_DATA_AI')) return '#8884d8';
-  if (line.includes('CRITICAL')) return '#ff6b6b';
-  if (line.includes('WEBHOOK')) return '#F5A623';
-  return '#10B981';
+  if (line.includes('ALERT') || line.includes('CRITICAL') || line.includes('BROKEN')) return '#ff6b6b';
+  if (line.includes('WEBHOOK') || line.includes('INGEST')) return '#F5A623';
+  if (line.includes('SYSTEM')) return '#10B981';
+  return '#a6accd';
 }
 
-// ---------------------------------------------------------------------------
-// Build the log lines from the current item set
-// ---------------------------------------------------------------------------
-
-function buildLogs(items: ScrapedItem[]): string[] {
-  if (items.length === 0) {
-    return [
-      '[SYSTEM] Awaiting Bright Data Webhook connection...',
-      'Listening on /api/ingest',
-    ];
-  }
-
-  const lines: string[] = [
-    '[SYSTEM] Bright Data Pipeline Active',
-    '[BRIGHT_DATA_AI] DOM change detected on target retailer.',
-    '[BRIGHT_DATA_AI] Selectors broken. Initiating self-healing protocol...',
-    '[BRIGHT_DATA_AI] Selectors successfully adapted.',
-    `[INGEST] Received payload batch: ${items.length} items`,
-    '---',
-  ];
-
-  items.forEach((item, index) => {
-    const isGouged =
-      item.originalPrice != null &&
-      (item.price - item.originalPrice) / item.originalPrice > 0.5;
-
-    const time = new Date(item.timestamp).toLocaleTimeString();
-    lines.push(`[${time}] INGEST: ${item.id}`);
-    lines.push(`> Name: ${item.name}`);
-    lines.push(`> Price: $${item.price} (Orig: $${item.originalPrice ?? 'N/A'})`);
-
-    if (isGouged) {
-      const spike = (((item.price - item.originalPrice!) / item.originalPrice!) * 100).toFixed(0);
-      lines.push(`[ALERT] CRITICAL GOUGING DETECTED: +${spike}%`);
-      lines.push('[WEBHOOK] Triggering Slack Alert to Consumer Protection Agency...');
-    }
-
-    if (index < items.length - 1) lines.push('---');
-  });
-
-  return lines;
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export default function LiveStream({ items }: { items: ScrapedItem[] }) {
-  const [logs, setLogs] = useState<string[]>([]);
+export default function LiveStream() {
+  const [events, setEvents] = useState<LogEvent[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Poll /api/status for new events every 2 seconds
   useEffect(() => {
-    setLogs(buildLogs(items));
-  }, [items]);
+    let mounted = true;
 
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/status', { cache: 'no-store' });
+        const data = await res.json();
+        if (mounted && data.events) {
+          setEvents(data.events);
+        }
+      } catch {
+        // Silently ignore
+      }
+    };
+
+    // Initial fetch
+    poll();
+
+    const interval = setInterval(poll, 2000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Auto-scroll to bottom when new events arrive
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [logs]);
+  }, [events]);
 
   return (
     <div className="bento-card" style={{ height: '300px', display: 'flex', flexDirection: 'column' }}>
@@ -109,11 +103,25 @@ export default function LiveStream({ items }: { items: ScrapedItem[] }) {
           lineHeight: '1.6',
         }}
       >
-        {logs.map((log, i) => (
-          <div key={i} style={{ opacity: log.startsWith('---') ? 0.5 : 1, color: getLogColor(log) }}>
-            {log}
+        {events.length === 0 ? (
+          <div style={{ color: '#a6accd', opacity: 0.6 }}>
+            <div>[SYSTEM] Watchdog pipeline initialized</div>
+            <div>[SYSTEM] Listening on /api/ingest for Bright Data webhooks...</div>
           </div>
-        ))}
+        ) : (
+          events.map((event, i) => (
+            <div
+              key={`${event.time}-${i}`}
+              style={{
+                color: getLogColor(event.message),
+                animation: i === events.length - 1 ? 'fadeIn 0.3s ease-in' : undefined,
+              }}
+            >
+              <span style={{ color: '#555', marginRight: '8px' }}>{formatTime(event.time)}</span>
+              {event.message}
+            </div>
+          ))
+        )}
 
         {/* Blinking cursor */}
         <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center' }}>

@@ -1,8 +1,12 @@
 import ScraperHealth from '@/components/ScraperHealth';
 import AnomalyChart from '@/components/AnomalyChart';
 import LiveStream from '@/components/LiveStream';
-import { getItems } from '@/lib/storage';
+import StatusPoller from '@/components/StatusPoller';
+import { getItems, getStatusData } from '@/lib/storage';
 import { ScrapedItem } from '@/types/scraper';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -17,12 +21,28 @@ function calcSpike(item: ScrapedItem): number | null {
   return ((item.price - item.originalPrice) / item.originalPrice) * 100;
 }
 
+function formatLastRun(isoString: string | null): string {
+  if (!isoString) return 'Awaiting first run';
+  const date = new Date(isoString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+
+  if (diffSec < 10) return 'Just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  return `${diffHr}h ago`;
+}
+
 // ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
 
 export default async function Dashboard() {
   const items = await getItems();
+  const statusData = await getStatusData();
 
   // Aggregate stats for the bento cards
   let gougingCount = 0;
@@ -35,8 +55,13 @@ export default async function Dashboard() {
     if (spike > highestSpike) highestSpike = spike;
   }
 
+  const lastRunLabel = formatLastRun(statusData.lastRun);
+
   return (
     <>
+      {/* Invisible client component that polls for status changes */}
+      <StatusPoller />
+
       <div className="ambient-bg" />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '40px', position: 'relative', zIndex: 1 }}>
@@ -50,7 +75,7 @@ export default async function Dashboard() {
               Real-time emergency supply monitoring and anomaly detection.
             </p>
           </div>
-          <ScraperHealth status="healthy" lastRun="Live" />
+          <ScraperHealth status={statusData.status} lastRun={lastRunLabel} />
         </header>
 
         {/* Stat Cards */}
@@ -69,9 +94,12 @@ export default async function Dashboard() {
           />
           <StatCard
             label="AI Healing Events"
-            value="1"
+            value={String(statusData.healingEvents)}
             color="#8884d8"
-            badge={{ text: 'Active', className: 'badge', style: { background: 'rgba(136, 132, 216, 0.2)', color: '#8884d8', borderColor: 'rgba(136, 132, 216, 0.3)' } }}
+            badge={statusData.healingEvents > 0
+              ? { text: 'Active', className: 'badge', style: { background: 'rgba(136, 132, 216, 0.2)', color: '#8884d8', borderColor: 'rgba(136, 132, 216, 0.3)' } }
+              : undefined
+            }
           />
         </section>
 
@@ -83,7 +111,7 @@ export default async function Dashboard() {
             </div>
             <AnomalyChart items={items} />
           </div>
-          <LiveStream items={items} />
+          <LiveStream />
         </section>
 
         {/* Item List */}
@@ -103,12 +131,12 @@ export default async function Dashboard() {
                   No data collected yet. Awaiting Bright Data webhook...
                 </div>
               ) : (
-                items.map((item: ScrapedItem) => {
+                items.map((item: ScrapedItem, index: number) => {
                   const spike = calcSpike(item);
                   const isGouging = spike !== null && spike > 50;
 
                   return (
-                    <div key={item.id} className="raycast-item">
+                    <div key={`${item.id}-${index}`} className="raycast-item">
                       {/* Left: indicator + name */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 2 }}>
                         <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isGouging ? '#ff6b6b' : 'var(--border-hover)' }} />
